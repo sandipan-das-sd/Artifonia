@@ -109,68 +109,128 @@ export default function HomeScreen() {
     }
   };
 
+  // const sendAudioToWhisper = async (uri: string) => {
+  //   try {
+  //     const formData: any = new FormData();
+  //     formData.append("file", {
+  //       uri,
+  //       type: "audio/wav",
+  //       name: "recording.wav",
+  //     });
+  //     formData.append("model", "whisper-1");
+
+  //     const response = await axios.post(
+  //       "https://api.openai.com/v1/audio/transcriptions",
+  //       formData,
+  //       {
+  //         headers: {
+  //           Authorization: `Bearer ${process.env.EXPO_PUBLIC_OPENAI_API_KEY}`,
+  //           "Content-Type": "multipart/form-data",
+  //         },
+  //       }
+  //     );
+  //     return response.data.text;
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  // };
+
+  // send text to gpt4 API
+  // const sendToGpt = async (text: string) => {
+  //   try {
+  //     const response = await axios.post(
+  //       "https://api.openai.com/v1/chat/completions",
+  //       {
+  //         model: "gpt-4",
+  //         messages: [
+  //           {
+  //             role: "system",
+  //             content:
+  //               "You are Artifonia, a friendly AI assistant who responds naturally and referes to yourself as Artifonia when asked for your name. You are a helpful assistant who can answer questions and help with tasks. You must always respond in English, no matter the input language,and provide helpful, clear answers",
+  //           },
+  //           {
+  //             role: "user",
+  //             content: text,
+  //           },
+  //         ],
+  //       },
+  //       {
+  //         headers: {
+  //           Authorization: `Bearer ${process.env.EXPO_PUBLIC_OPENAI_API_KEY}`,
+  //           "Content-Type": "application/json",
+  //         },
+  //       }
+  //     );
+  //     setText(response.data.choices[0].message.content);
+  //     setLoading(false);
+  //     setAIResponse(true);
+  //     await speakText(response.data.choices[0].message.content);
+  //     return response.data.choices[0].message.content;
+  //   } catch (error) {
+  //     console.log("Error sending text to GPT-4", error);
+  //   }
+  // };
   const sendAudioToWhisper = async (uri: string) => {
     try {
-      const formData: any = new FormData();
-      formData.append("file", {
-        uri,
-        type: "audio/wav",
-        name: "recording.wav",
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const reader = new FileReader();
+      const base64Audio = await new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
       });
-      formData.append("model", "whisper-1");
-
-      const response = await axios.post(
-        "https://api.openai.com/v1/audio/transcriptions",
-        formData,
+  
+      const audioContent = base64Audio.toString().split(',')[1];
+  
+      const speechResponse = await axios.post(
+        `https://speech.googleapis.com/v1/speech:recognize?key=${process.env.EXPO_PUBLIC_GOOGLE_API_KEY}`,
         {
-          headers: {
-            Authorization: `Bearer ${process.env.EXPO_PUBLIC_OPENAI_API_KEY}`,
-            "Content-Type": "multipart/form-data",
+          config: {
+            encoding: "LINEAR16",
+            sampleRateHertz: 44100,
+            languageCode: "en-US",
+          },
+          audio: {
+            content: audioContent
           },
         }
       );
-      return response.data.text;
+      return speechResponse.data.results[0].alternatives[0].transcript;
     } catch (error) {
-      console.log(error);
+      console.log("Speech-to-Text error:", error.response?.data || error);
+      return "";
     }
   };
-
-  // send text to gpt4 API
+  
   const sendToGpt = async (text: string) => {
     try {
       const response = await axios.post(
-        "https://api.openai.com/v1/chat/completions",
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.EXPO_PUBLIC_GOOGLE_API_KEY}`,
         {
-          model: "gpt-4",
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are Artifonia, a friendly AI assistant who responds naturally and referes to yourself as Artifonia when asked for your name. You are a helpful assistant who can answer questions and help with tasks. You must always respond in English, no matter the input language,and provide helpful, clear answers",
-            },
-            {
-              role: "user",
-              content: text,
-            },
-          ],
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${process.env.EXPO_PUBLIC_OPENAI_API_KEY}`,
-            "Content-Type": "application/json",
-          },
+          contents: [{
+            role: "user",
+            parts: [{ text }]
+          }],
+          generationConfig: {
+            temperature: 0.7,
+            topK: 1,
+            topP: 1,
+          }
         }
       );
-      setText(response.data.choices[0].message.content);
+      
+      const aiResponse = response.data.candidates[0].content.parts[0].text;
+      setText(aiResponse);
       setLoading(false);
       setAIResponse(true);
-      await speakText(response.data.choices[0].message.content);
-      return response.data.choices[0].message.content;
+      await speakText(aiResponse);
+      return aiResponse;
     } catch (error) {
-      console.log("Error sending text to GPT-4", error);
+      console.log("Gemini error:", error.response?.data || error);
+      setLoading(false);
+      return "";
     }
   };
-
   const speakText = async (text: string) => {
     setAISpeaking(true);
     const options = {
